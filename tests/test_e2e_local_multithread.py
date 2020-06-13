@@ -1,5 +1,3 @@
-from threading import Lock
-
 from pylo.execution import Pylo
 
 
@@ -38,20 +36,14 @@ def test_work_not_repeated_when_successful(tmpdir):
 
 
 def test_resume_when_failed(tmpdir):
-    successful_calc = FactorsCalculator()
-    always_fail_cal = FailingFactorsCalculator(num_attempts_to_fail=None)
-
     numbers_to_factories = [i for i in range(1, 100)]
     fail_for_numbers = [11, 56]
 
-    def calc_fun(n):
-        if n in fail_for_numbers:
-            return always_fail_cal.compute_factors(n)
-        else:
-            return successful_calc.compute_factors(n)
+    successful_calc = FactorsCalculator()
+    failing_calc = FailingFactorsCalculator(fail_for_numbers)
 
     pylo = Pylo.local(tmpdir, number_of_workers=2, max_worker_retries=2)
-    execution_id = pylo.start_from_scratch(numbers_to_factories, calc_fun)
+    execution_id = pylo.start_from_scratch(numbers_to_factories, failing_calc.compute_factors)
 
     finished_inputs, unfinished_inputs = pylo.get_state(execution_id)
     assert len(finished_inputs) == len(numbers_to_factories) - len(fail_for_numbers)
@@ -63,10 +55,16 @@ def test_resume_when_failed(tmpdir):
     assert unfinished_inputs == []
 
 
-# User stories for this:
-#   as a user, I would like to define a function, and execute that function on multiple threads
-#   as a user, I would like to be able to resume the execution of the function
-#   as a user, I would like to clearly see the execution error for my function
+def test_give_up_when_max_failures_exceeded(tmpdir):
+    always_fail_calculator = FailingFactorsCalculator()
+    numbers_to_factories = [1]
+
+    pylo = Pylo.local(tmpdir, number_of_workers=2, max_worker_retries=10000)
+    execution_id = pylo.start_from_scratch(numbers_to_factories, always_fail_calculator.compute_factors)
+
+    finished_inputs, unfinished_inputs = pylo.get_state(execution_id)
+    assert finished_inputs == []
+    assert unfinished_inputs == [1]
 
 
 class FactorsCalculator:
@@ -84,22 +82,12 @@ class FactorsCalculator:
 
 
 class FailingFactorsCalculator:
-    def __init__(self, num_attempts_to_fail):
-        self._num_attempts_to_fail = num_attempts_to_fail
-        self._attempts_so_far = dict()
-        self._attempts_lock = Lock()
-
+    def __init__(self, only_fail_for_numbers=None):
+        self._only_fail_for_numbers = only_fail_for_numbers
         self._factors_calculator = FactorsCalculator()
 
     def compute_factors(self, n):
-        with self._attempts_lock:
-            if n not in self._attempts_so_far:
-                self._attempts_so_far[n] = 0
-
-            self._attempts_so_far[n] += 1
-
-            if self._num_attempts_to_fail is None or \
-                    self._attempts_so_far[n] <= self._num_attempts_to_fail:
-                raise Exception(f'Failed to compute factors for {n}')
-
-        return self._factors_calculator.compute_factors(n)
+        if self._only_fail_for_numbers is None or n in self._only_fail_for_numbers:
+            raise Exception(f'Failed to compute factors for {n}')
+        else:
+            return self._factors_calculator.compute_factors(n)

@@ -1,7 +1,7 @@
 import logging
-from abc import ABC, abstractmethod
-from threading import Thread
+import threading
 
+from abc import ABC, abstractmethod
 from pylo.state import PyloExecutionState, PyloExecutionStore
 
 _logger = logging.getLogger(__name__)
@@ -38,15 +38,14 @@ class PyloLocalMultiThreadExecutor(PyloTaskExecutor):
         worker_threads = []
         for worker_id, unfinished_state in enumerate(unfinished_states, start=finished_worker_id + 1):
             task_store.store_worker_state(execution_state.execution_id, worker_id, unfinished_state)
-            worker_thread = Thread(
-                target=_worker_function,
-                args=(execution_state.execution_id,
-                      worker_id,
-                      task_function,
-                      unfinished_state,
-                      task_store,
-                      self._max_workers_retry,
-                      self._executions_before_flush))
+            worker_thread = WorkerThread(
+                execution_id=execution_state.execution_id,
+                worker_id=worker_id,
+                task_function=task_function,
+                task_state=unfinished_state,
+                task_store=task_store,
+                max_workers_retry=self._max_workers_retry,
+                executions_before_flush=self._executions_before_flush)
 
             worker_threads.append(worker_thread)
 
@@ -59,45 +58,53 @@ class PyloLocalMultiThreadExecutor(PyloTaskExecutor):
         _logger.info('All worker threads finished')
 
 
-def _worker_function(execution_id, worker_id,
-                     task_function, task_state, task_store,
-                     max_workers_retry, executions_before_flush,
-                     failures_so_far=0):
+class WorkerThread(threading.Thread):
+    def __init__(self, execution_id, worker_id,
+                 task_function, task_state, task_store,
+                 max_workers_retry, executions_before_flush):
+        threading.Thread.__init__(self)
+        self.execution_id = execution_id
+        self.worker_id = worker_id
+        self.task_function = task_function
+        self.task_state = task_state
+        self.task_store = task_store
+        self.max_workers_retry = max_workers_retry
+        self.executions_before_flush = executions_before_flush
+        self.failures_so_far = 0
 
-    if failures_so_far >= max_workers_retry:
-        _logger.error(f'Worker {worker_id} failed more than {max_workers_retry} times so it will give up')
-        task_store.store_worker_state(
-            execution_id=execution_id,
-            worker_id=worker_id,
-            task_execution_state=task_state)
+    def run(self):
+        _logger.info(f'Starting worker {self.worker_id} for execution {self.execution_id}. '
+                     f'Executions to perform: {len(self.task_state.unfinished_inputs)}, '
+                     f'finished executions: {len(self.task_state.finished_inputs)}')
 
-        return
+        while self.task_state.unfinished_inputs:
+            if self.failures_so_far >= self.max_workers_retry:
+                _logger.error(f'Worker {self.worker_id} failed more than '
+                              f'{self.max_workers_retry} times so it will give up')
+                self.task_store.store_worker_state(
+                    execution_id=self.execution_id,
+                    worker_id=self.worker_id,
+                    task_execution_state=self.task_state)
 
-    _logger.info(f'Starting worker {worker_id} for execution {execution_id}. '
-                 f'Executions to perform: {len(task_state.unfinished_inputs)}, '
-                 f'finished executions: {len(task_state.finished_inputs)}')
+                return
 
-    while task_state.unfinished_inputs:
-        cur_task_input = task_state.unfinished_inputs.pop(0)
-        try:
-            task_function(cur_task_input)
-        except Exception as e:
-            _logger.error(f'Worker {worker_id} failed to execute task for input {cur_task_input}. '
-                          f'Failures so far: {failures_so_far}. Failure message: {str(e)}')
+            cur_task_input = self.task_state.unfinished_inputs.pop(0)
+            try:
+                self.task_function(cur_task_input)
+            except Exception as e:
+                _logger.error(f'Worker {self.worker_id} failed to execute task for input {cur_task_input}. '
+                              f'Failures so far: {self.failures_so_far}. Failure message: {str(e)}')
 
-            task_state.unfinished_inputs.append(cur_task_input)
-            return _worker_function(execution_id=execution_id,
-                                    worker_id=worker_id,
-                                    task_function=task_function,
-                                    task_state=task_state,
-                                    task_store=task_store,
-                                    max_workers_retry=max_workers_retry,
-                                    executions_before_flush=executions_before_flush,
-                                    failures_so_far=failures_so_far+1)
+                self.task_state.unfinished_inputs.append(cur_task_input)
+                self.failures_so_far += 1
+                continue
 
-        task_state.finished_inputs.append(cur_task_input)
-        if len(task_state.finished_inputs) % executions_before_flush == 0 or len(task_state.unfinished_inputs) == 0:
-            task_store.store_worker_state(
-                execution_id=execution_id,
-                worker_id=worker_id,
-                task_execution_state=task_state)
+            self.task_state.finished_inputs.append(cur_task_input)
+
+            if len(self.task_state.finished_inputs) % self.executions_before_flush == 0 or \
+                    len(self.task_state.unfinished_inputs) == 0:
+
+                self.task_store.store_worker_state(
+                    execution_id=self.execution_id,
+                    worker_id=self.worker_id,
+                    task_execution_state=self.task_state)
