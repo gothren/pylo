@@ -5,7 +5,7 @@ def test_single_input(tmpdir):
     calculator = FactorsCalculator()
     numbers_to_factories = [1]
 
-    pylo = Pylo.local_threaded(tmpdir, number_of_workers=2)
+    pylo = Pylo.local_multithread(tmpdir, number_of_workers=2)
     execution_id = pylo.start_from_scratch(numbers_to_factories, calculator.compute_factors)
 
     finished_inputs, unfinished_inputs = pylo.get_state(execution_id)
@@ -17,7 +17,7 @@ def test_multiple_inputs(tmpdir):
     calculator = FactorsCalculator()
     numbers_to_factories = [i for i in range(1, 10000)]
 
-    pylo = Pylo.local_threaded(tmpdir, number_of_workers=2)
+    pylo = Pylo.local_multithread(tmpdir, number_of_workers=2)
     execution_id = pylo.start_from_scratch(numbers_to_factories, calculator.compute_factors)
 
     finished_inputs, unfinished_inputs = pylo.get_state(execution_id)
@@ -29,7 +29,7 @@ def test_work_not_repeated_when_successful(tmpdir):
     calculator = FactorsCalculator()
     numbers_to_factories = [i for i in range(1, 100)]
 
-    pylo = Pylo.local_threaded(tmpdir, number_of_workers=2)
+    pylo = Pylo.local_multithread(tmpdir, number_of_workers=2)
     pylo.start_from_scratch(numbers_to_factories, calculator.compute_factors)
 
     assert sorted(calculator.inputs_history) == numbers_to_factories
@@ -42,7 +42,7 @@ def test_resume_when_failed(tmpdir):
     successful_calc = FactorsCalculator()
     failing_calc = FailingFactorsCalculator(fail_for_numbers)
 
-    pylo = Pylo.local_threaded(tmpdir, number_of_workers=2, max_worker_retries=2)
+    pylo = Pylo.local_multithread(tmpdir, number_of_workers=2, max_worker_retries=2)
     execution_id = pylo.start_from_scratch(numbers_to_factories, failing_calc.compute_factors)
 
     finished_inputs, unfinished_inputs = pylo.get_state(execution_id)
@@ -59,7 +59,7 @@ def test_give_up_when_max_failures_exceeded(tmpdir):
     always_fail_calculator = FailingFactorsCalculator()
     numbers_to_factories = [1]
 
-    pylo = Pylo.local_threaded(tmpdir, number_of_workers=2, max_worker_retries=1000, store_exceptions=False)
+    pylo = Pylo.local_multithread(tmpdir, number_of_workers=2, max_worker_retries=1000, store_exceptions=False)
     execution_id = pylo.start_from_scratch(numbers_to_factories, always_fail_calculator.compute_factors)
 
     finished_inputs, unfinished_inputs = pylo.get_state(execution_id)
@@ -73,11 +73,11 @@ def test_loads_exceptions_when_failing(tmpdir):
 
     failing_calc = FailingFactorsCalculator(fail_for_numbers)
 
-    pylo = Pylo.local_threaded(tmpdir, number_of_workers=2, max_worker_retries=2)
+    pylo = Pylo.local_multithread(tmpdir, number_of_workers=2, max_worker_retries=1)
     execution_id = pylo.start_from_scratch(numbers_to_factories, failing_calc.compute_factors)
 
     exceptions = pylo.get_exceptions(execution_id)
-    print('Kurwa')
+    assert [str(e) for e in exceptions] == ['Failed to compute factors for 11', 'Failed to compute factors for 56']
 
 
 class FactorsCalculator:

@@ -13,7 +13,7 @@ class Pylo:
         self._task_store = task_store
 
     @classmethod
-    def local_threaded(
+    def local_multithread(
             cls,
             local_store_dir,
             number_of_workers,
