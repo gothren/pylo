@@ -14,10 +14,11 @@ class PyloTaskExecutor(ABC):
 
 
 class PyloLocalMultiThreadExecutor(PyloTaskExecutor):
-    def __init__(self, number_of_workers, max_workers_retry, executions_before_flush=100):
+    def __init__(self, number_of_workers, max_workers_retry, executions_before_flush, store_exceptions):
         self._number_of_workers = number_of_workers
         self._max_workers_retry = max_workers_retry
         self._executions_before_flush = executions_before_flush
+        self._store_exceptions = store_exceptions
 
     def execute(self, execution_state: PyloExecutionState, task_store: PyloExecutionStore, task_function):
         _logger.info(
@@ -45,6 +46,7 @@ class PyloLocalMultiThreadExecutor(PyloTaskExecutor):
                 task_state=unfinished_state,
                 task_store=task_store,
                 max_workers_retry=self._max_workers_retry,
+                store_exceptions=self._store_exceptions,
                 executions_before_flush=self._executions_before_flush)
 
             worker_threads.append(worker_thread)
@@ -61,7 +63,7 @@ class PyloLocalMultiThreadExecutor(PyloTaskExecutor):
 class WorkerThread(threading.Thread):
     def __init__(self, execution_id, worker_id,
                  task_function, task_state, task_store,
-                 max_workers_retry, executions_before_flush):
+                 max_workers_retry, store_exceptions, executions_before_flush):
         threading.Thread.__init__(self)
         self.execution_id = execution_id
         self.worker_id = worker_id
@@ -70,6 +72,7 @@ class WorkerThread(threading.Thread):
         self.task_store = task_store
         self.max_workers_retry = max_workers_retry
         self.executions_before_flush = executions_before_flush
+        self.store_exceptions = store_exceptions
         self.failures_so_far = 0
 
     def run(self):
@@ -97,6 +100,9 @@ class WorkerThread(threading.Thread):
 
                 self.task_state.unfinished_inputs.append(cur_task_input)
                 self.failures_so_far += 1
+
+                if self.store_exceptions:
+                    self.task_store.store_task_exception(self.execution_id, e)
                 continue
 
             self.task_state.finished_inputs.append(cur_task_input)

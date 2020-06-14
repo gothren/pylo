@@ -13,9 +13,19 @@ class Pylo:
         self._task_store = task_store
 
     @classmethod
-    def local(cls, local_store_dir, number_of_workers, max_worker_retries=1000):
+    def local_threaded(
+            cls,
+            local_store_dir,
+            number_of_workers,
+            max_worker_retries=1000,
+            task_executions_before_flush=1000,
+            store_exceptions=True):
+
         executor = PyloLocalMultiThreadExecutor(
-            number_of_workers=number_of_workers, max_workers_retry=max_worker_retries)
+            number_of_workers=number_of_workers,
+            max_workers_retry=max_worker_retries,
+            executions_before_flush=task_executions_before_flush,
+            store_exceptions=store_exceptions)
 
         store = PyloFileSystemExecutionStore(local_store_dir)
         return Pylo(executor, store)
@@ -40,3 +50,6 @@ class Pylo:
     def get_state(self, execution_id):
         task_state = self._task_store.load_whole_state(execution_id)
         return task_state.finished_inputs, task_state.unfinished_inputs
+
+    def get_exceptions(self, execution_id):
+        return self._task_store.load_task_exceptions(execution_id)
