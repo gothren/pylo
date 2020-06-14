@@ -42,7 +42,7 @@ def test_resume_when_failed(tmpdir):
     successful_calc = FactorsCalculator()
     failing_calc = FailingFactorsCalculator(fail_for_numbers)
 
-    pylo = Pylo.local_multithread(tmpdir, number_of_workers=2, max_worker_retries=2)
+    pylo = Pylo.local_multithread(tmpdir, number_of_workers=2, max_worker_failures=2)
     execution_id = pylo.start_from_scratch(numbers_to_factories, failing_calc.compute_factors)
 
     finished_inputs, unfinished_inputs = pylo.get_state(execution_id)
@@ -59,7 +59,7 @@ def test_give_up_when_max_failures_exceeded(tmpdir):
     always_fail_calculator = FailingFactorsCalculator()
     numbers_to_factories = [1]
 
-    pylo = Pylo.local_multithread(tmpdir, number_of_workers=2, max_worker_retries=1000, store_exceptions=False)
+    pylo = Pylo.local_multithread(tmpdir, number_of_workers=2, max_worker_failures=1000, store_exceptions=False)
     execution_id = pylo.start_from_scratch(numbers_to_factories, always_fail_calculator.compute_factors)
 
     finished_inputs, unfinished_inputs = pylo.get_state(execution_id)
@@ -73,7 +73,7 @@ def test_loads_exceptions_when_failing(tmpdir):
 
     failing_calc = FailingFactorsCalculator(fail_for_numbers)
 
-    pylo = Pylo.local_multithread(tmpdir, number_of_workers=2, max_worker_retries=1)
+    pylo = Pylo.local_multithread(tmpdir, number_of_workers=2, max_worker_failures=1)
     execution_id = pylo.start_from_scratch(numbers_to_factories, failing_calc.compute_factors)
 
     exceptions = pylo.get_exceptions(execution_id)

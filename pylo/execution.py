@@ -17,13 +17,13 @@ class Pylo:
             cls,
             local_store_dir,
             number_of_workers,
-            max_worker_retries=1000,
+            max_worker_failures=1000,
             task_executions_before_flush=1000,
             store_exceptions=True):
 
         executor = PyloLocalMultiThreadExecutor(
             number_of_workers=number_of_workers,
-            max_workers_retry=max_worker_retries,
+            max_worker_failures=max_worker_failures,
             executions_before_flush=task_executions_before_flush,
             store_exceptions=store_exceptions)
 
