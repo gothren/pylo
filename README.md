@@ -3,50 +3,22 @@ A simple task execution library written in Python.
 
 ## Purpose
 Pylo is a very simple task execution framework which provides a couple of extra features not supported by the built-in
-Python task execution libraries (`ThreadPoolExecutor`, `multiprocessing`):
+Python task execution libraries:
 
-* it snapshots the execution state, allowing clients to resume execution of tasks (e.g. after the reason for failure has
+* it snapshots the execution state, allowing clients to resume execution of tasks (e.g. after a bug has
  been fixed)
 * it stores execution errors
-* it has a built-in tolerance to execution errors, which it remembers
+* it has a built-in tolerance to execution errors
 
 
-## Abstractions
-Each `task` is assumed to be of the form:
-```text
-f(input): void | Exception
-```
-where `input` is any Python object, and `void | Exception` denotes "either no output or throws an exception when 
-the task fails. 
+Pylo was created to deal with uncertain tasks, which fail often, and might have to be iteratively improved. One example 
+here could be collecting data of unknown schema, where your goal could be to collect "just enough" data, or to
+iteratively improve the collection process by starting somewhere, running it, and capturing the edge-cases by observing
+failures. Pylo allows you do to that by snapshoting the execution states (i.e. what failed and what succeeded), 
+tolerating some number of failures, and allowing you to retrieve failures after your execution has finished.
 
 
-Pylo does not care about the output of its task - it is at the liberty of each task to manage the output (e.g. persist 
-it in the database). If a task fails, i.e. throws en exception, Pylo would store the exception, and attempt to retry 
-the task if configured to do so. Pylo attempts to always run each task once if its successful, but this is not 
-guaranteed. It is therefore recommended that tasks are idempotent w.r.t. their execution and output. 
-
-
-Tasks in Pylo are grouped into `executions`. Each execution has an `id`, and a `state` which is just a collection of 
-inputs of a task. The inputs are divided into:
-* `finished` - the task has already been run on these inputs, and it finished without any exceptions
-* `unfinished` - either the task has not yet ben run on these inputs, or it failed
-
-
-Each execution can be resumed from a previous execution (by passing the previous execution id, see below). When resumed
-the execution:
-* gets assigned a new execution id
-* treats all `finished` inputs of the previous execution as finished, and does not rerun them
-* treats all `unfinished` inputs of the previous execution as unfinished, and attempts to rerun them
-* does not inherit `exceptions` from the previous execution id
-
-
-Executions and tasks are run by `workers`. Each worker has an `id`. Also, each worker maintains a set of finished and 
-unfinished inputs. No two workers share the same inputs. Furthermore, each worker is configured with the allowed 
-number of failures. Note, this number is not "per task", it is "per worker", e.g. if a worker is asked to run a task
-over 1000 inputs, and its "allowed number of failures" is set to 2, it will give up after a 3rd task fails.
-
-
-## Code examples
+## Example usage
 
 First define a task you would like to execute. For this tutorial, lets assume our task is to download movie details
 from IMDB database using https://imdbpy.github.io/. I.e. somewhere in the code we would have:
@@ -93,7 +65,7 @@ The above code creates a new Pylo instance, which snapshots the execution state 
 execution_id = pylo.start_from_scratch(movie_ids, download_movie_details)
 ```
 `movie_ids` is a list of IMDB movie ids which you got from somewhere (e.g. by execution some IMDB API call to get it). 
-`download_movie_details` is a pointer to the function which we define before. The above code will block until either:
+`download_movie_details` is a pointer to the function which we defined before. The above code will block until either:
 * the task finishes successfully for all inputs
 * the task fails for more inputs than the allowed `max_worker_failures` for each worker (see below, 
 here it uses default which is 1000)
@@ -123,26 +95,76 @@ To control how often Pylo snapshots successful / failed inputs to its persistent
 ```
 pylo = Pylo.local_multithread(local_store_dir, 2, task_executions_before_flush=1)
 ```
-The above will snapshot state after execution each task.
+The above will snapshot state after each execution of the task.
 
-To disable exception storing:
+To disable exception storage:
 ```
 pylo = Pylo.local_multithread(local_store_dir, 2, store_exceptions=False)
 ```
 
 
-## Q/A
-
-What was Pylo created for?
-* easy tasks with uncertainty
-* part of my task to learn python
-    
-
-Where does Pylo snapshot the execution state (i.e. task inputs)?
-
-
-How does Pylo serialize execution state (i.e. task inputs)?
+## Abstractions
+Each `task` is assumed to be of the form:
+```text
+f(input): void | Exception
+```
+where `input` is any Python object, and `void | Exception` denotes "either no output or throws an exception when 
+the task fails".
 
 
-How does Pylo run tasks?
+Pylo does not care about the output of its task - it is at the liberty of each task to manage the output (e.g. persist 
+it in the database). If a task fails, i.e. throws en exception, Pylo would store the exception, and attempt to retry 
+the task later. Pylo attempts to always run each successful task, but this is not 
+guaranteed. It is therefore recommended that tasks are idempotent w.r.t. their execution and output. 
 
+
+Tasks in Pylo are grouped into `executions`. Each execution has an `id`, and a `state` which is just a collection of 
+inputs of a task. The inputs are divided into:
+* `finished` - the task has already been run on these inputs, and it finished without any exceptions
+* `unfinished` - either the task has not yet ben run on these inputs, or it failed
+
+
+Each execution can be resumed from a previous execution (by passing the previous execution id). When resumed,
+the execution:
+* gets assigned a new execution id
+* treats all `finished` inputs of the previous execution as finished, and does not rerun them
+* treats all `unfinished` inputs of the previous execution as unfinished, and attempts to rerun them
+* does not inherit `exceptions` from the previous execution id
+
+
+Executions and tasks are run by `workers`. Each worker has an `id`. Also, each worker maintains a set of finished and 
+unfinished inputs. No two workers share the same inputs. Furthermore, each worker is configured with the allowed 
+number of failures. Note, this number is not "per task", it is "per worker", e.g. if a worker is asked to run a task
+over 1000 inputs, and its "allowed number of failures" is set to 2, it will give up after the 3rd task fails.
+
+
+## Q/A 
+_Where does Pylo snapshot the execution state (i.e. task inputs)?_
+
+Currently it snapshots state only to disk, but it could be easy to extend Pylo to send data to some other 
+persistent storage.
+
+
+_How does Pylo serialize execution state (i.e. task inputs)?_
+
+It uses `pickle`. The nice thing here is that pickle is very flexible with what you can serialize, and so you as a user 
+don't have many restrictions on what you can choose as "input" of your task. Please note that using pickle could 
+introduce security issues if the data it serializes come from an untrusted source. If this is the case for your Pylo
+task inputs, please do not use it. 
+
+Extending Pylo to use other serialization mechanisms (e.g. json) should be very straightforward, feel free to PR.
+
+
+_How does Pylo run tasks?_
+
+It uses Python threads. In CPython due to GIL, Python threads are not suitable for speeding up CPU-intensive operations.
+So if the vast majority of work your tasks do is on the CPU, and you are running this on CPython interpreter, 
+you will probably not benefit from running multiple Pylo workers speed-wise. However, if your tasks are IO-bound, 
+threads are perfectly fine, and do provide speed boosts. 
+
+Regardless, it should be straightforward to implement other worker models for Pylo, e.g. multi-processing, feel free to 
+PR.
+
+
+_Why was Pylo created?_
+Pylo was just a one of side projects I did when learning Python.
