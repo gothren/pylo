@@ -5,7 +5,7 @@ A simple task execution library written in Python.
 Pylo is a very simple task execution framework which provides a couple of extra features not supported by the built-in
 Python task execution libraries:
 
-* it snapshots the execution state, allowing clients to resume execution of tasks (e.g. after a bug has
+* it snapshots the execution progress, allowing clients to resume execution of tasks (e.g. after a bug has
  been fixed)
 * it stores execution errors
 * it has a built-in tolerance to execution errors
@@ -14,7 +14,7 @@ Python task execution libraries:
 Pylo was created to deal with uncertain tasks, which fail often, and might have to be iteratively improved. One example 
 here could be collecting data of unknown schema, where your goal could be to collect "just enough" data, or to
 iteratively improve the collection process by starting somewhere, running it, and capturing the edge-cases by observing
-failures. Pylo allows you do to that by snapshoting the execution states (i.e. what failed and what succeeded), 
+failures. Pylo allows you do to that by snapshotting the execution progress (i.e. what failed and what succeeded), 
 tolerating some number of failures, and allowing you to retrieve failures after your execution has finished.
 
 
@@ -30,7 +30,7 @@ imdb_client = IMDb()
 ```
 Also, lets assume we are writing the downloaded movie details to some persistent storage using a class called 
 `MovieStore` which has a function `store_movie(movie_id, movie_details)`. E.g. if the underlying persistent storage
-is a SQL database, the `MovieStore` class will handle all the details of creating and maintaing a connection, and
+is an SQL database, the `MovieStore` class will handle all the details of creating and maintaining a connection, and
 SQL needed to insert / update the database. 
 
 Given the above, we can define Pylo task as:
@@ -42,12 +42,12 @@ def download_movie_details(self, movie_id):
 
 Couple of notes about the above:
 * `movie_id` is assumed to be some sort of id IMDB associated with each movie. It is basically what we refer 
-to as "Pylo task input" (see above).
+to as "Pylo task input".
 * If the above code fails, it would throw an exception. Pylo doesn't care about the Exception type, it will treat all
 exceptions thrown by the above as "task failures".
 * There is no output. Pylo does not care about task's output, it assumes you manage the output e.g. by persisting it
 in a database.
-* Pylo will try not to rerun a successful task twice, but it is not guaranteed (it can happen if you forcefully close
+* Pylo will try not to rerun a successful task twice, but this behaviour is not guaranteed (it can happen if you forcefully close
 the Python process which runs Pylo, before Pylo managed to persist its execution state). Therefore, it is recommended
 to make tasks idempotent - e.g. the above `movie_store.store_movie(..)` function could check if the movie details has
 already been stored for a particular movie, and just return if so. 
@@ -86,7 +86,7 @@ To rerun the task only for failed movie ids (e.g. after fixing the underlying pr
 new_execution_id = pylo.start_from_past_execution(execution_id, download_movie_details)
 ```
 
-To change the maximum number of failures tolerated per work:
+To change the maximum number of failures tolerated per worker:
 ```
 pylo = Pylo.local_multithread(local_store_dir, 2, max_worker_failures=500)
 ```
@@ -134,8 +134,7 @@ the execution:
 
 Executions and tasks are run by `workers`. Each worker has an `id`. Also, each worker maintains a set of finished and 
 unfinished inputs. No two workers share the same inputs. Furthermore, each worker is configured with the allowed 
-number of failures. Note, this number is not "per task", it is "per worker", e.g. if a worker is asked to run a task
-over 1000 inputs, and its "allowed number of failures" is set to 2, it will give up after the 3rd task fails.
+number of failures. Note, this number is not "per task", it is "per worker".
 
 
 ## Q/A 
@@ -167,4 +166,5 @@ PR.
 
 
 _Why was Pylo created?_
+
 Pylo was just a one of side projects I did when learning Python.
