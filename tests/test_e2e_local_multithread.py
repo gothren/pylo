@@ -80,6 +80,18 @@ def test_loads_exceptions_when_failing(tmpdir):
     assert [str(e) for e in exceptions] == ['Failed to compute factors for 11', 'Failed to compute factors for 56']
 
 
+def test_input_is_set(tmpdir):
+    calculator = FactorsCalculator()
+    numbers_to_factories = {1}
+
+    pylo = Pylo.local_multithread(tmpdir, number_of_workers=2)
+    execution_id = pylo.start_from_scratch(numbers_to_factories, calculator.compute_factors)
+
+    finished_inputs, unfinished_inputs = pylo.get_state(execution_id)
+    assert finished_inputs == [1]
+    assert unfinished_inputs == []
+
+
 class FactorsCalculator:
     def __init__(self):
         self.inputs_history = []

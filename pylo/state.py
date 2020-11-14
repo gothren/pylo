@@ -111,6 +111,7 @@ class PyloFileSystemExecutionStore(PyloExecutionStore):
 
 
 def _split_list_into_chunks(input_list, number_of_chunks):
+    input_list = list(input_list)
     input_list_len = len(input_list)
     chunk_size = math.ceil(input_list_len / number_of_chunks)
     return [input_list[i:i + chunk_size] for i in range(0, input_list_len, chunk_size)]

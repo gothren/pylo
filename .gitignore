@@ -1,1 +1,4 @@
-.idea/*
+.idea
+build/
+pylo.egg-info/
+pylo/__pycache__
